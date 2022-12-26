@@ -1,20 +1,142 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import {
+  Text,
+  View,
+  TextInput,
+  Button,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  Image
+} from 'react-native';
+import { FirebaseRecaptchaVerifierModal, FirebaseRecaptchaBanner } from 'expo-firebase-recaptcha';
+import { initializeApp, getApp } from 'firebase/app';
+import { getAuth, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { firebaseConfig } from './config';
+import * as ImagePicker from 'expo-image-picker';
 
-export default function App() {
-  return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+const app = getApp();
+const auth = getAuth(app);
+
+// Double-check that we can run the example
+if (!app?.options || Platform.OS === 'web') {
+  throw new Error(
+    'This example only works on Android or iOS, and requires a valid Firebase config.'
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  // Ref or state management hooks
+  const recaptchaVerifier = React.useRef(null);
+  const [image, setImage] = useState()
+  const [phoneNumber, setPhoneNumber] = React.useState();
+  const [verificationId, setVerificationId] = React.useState();
+  const [verificationCode, setVerificationCode] = React.useState();
+
+
+  const [message, showMessage] = React.useState();
+  const attemptInvisibleVerification = false;
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1
+    })
+
+    console.log(result);
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+  }
+
+  const pickCamera = () => {
+    ImagePicker.launchCameraAsync({
+      aspect: [16, 9],
+    }, console.log)
+  }
+  return (
+    <View style={{ padding: 20, marginTop: 50 }}>
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={firebaseConfig}
+      // attemptInvisibleVerification
+      />
+      <Button title="Pick an image from gallery" onPress={pickImage} />
+      {image && <Image source={{ uri: image }} style={{ width: 200, height: 200 }} />}
+      <Button title="Pick an image from camera roll" onPress={pickCamera} />
+      <Text style={{ marginTop: 20 }}>Enter phone number</Text>
+      <TextInput
+        style={{ marginVertical: 10, fontSize: 17 }}
+        placeholder="+1 999 999 9999"
+        autoFocus
+        autoCompleteType="tel"
+        keyboardType="phone-pad"
+        textContentType="telephoneNumber"
+        onChangeText={setPhoneNumber}
+      />
+      <Button
+        title="Send Verification Code"
+        disabled={!phoneNumber}
+        onPress={async () => {
+          // The FirebaseRecaptchaVerifierModal ref implements the
+          // FirebaseAuthApplicationVerifier interface and can be
+          // passed directly to `verifyPhoneNumber`.
+          try {
+            const phoneProvider = new PhoneAuthProvider(auth);
+            const verificationId = await phoneProvider.verifyPhoneNumber(
+              phoneNumber,
+              recaptchaVerifier.current
+            );
+            setVerificationId(verificationId);
+            showMessage({
+              text: 'Verification code has been sent to your phone.',
+            });
+          } catch (err) {
+            showMessage({ text: `Error: ${err.message}`, color: 'red' });
+          }
+        }}
+      />
+      <Text style={{ marginTop: 20 }}>Enter Verification code</Text>
+      <TextInput
+        style={{ marginVertical: 10, fontSize: 17 }}
+        editable={!!verificationId}
+        placeholder="123456"
+        onChangeText={setVerificationCode}
+      />
+      <Button
+        title="Confirm Verification Code"
+        disabled={!verificationId}
+        onPress={async () => {
+          try {
+            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+            const status = await signInWithCredential(auth, credential);
+            showMessage({ text: 'Phone authentication successful 👍' });
+          } catch (err) {
+            showMessage({ text: `Error: ${err.message}`, color: 'red' });
+          }
+        }}
+      />
+      {message ? (
+        <TouchableOpacity
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: 0xffffffee, justifyContent: 'center' },
+          ]}
+          onPress={() => showMessage(undefined)}>
+          <Text
+            style={{
+              color: message.color || 'blue',
+              fontSize: 17,
+              textAlign: 'center',
+              margin: 20,
+            }}>
+            {message.text}
+          </Text>
+        </TouchableOpacity>
+      ) : undefined}
+      {attemptInvisibleVerification && <FirebaseRecaptchaBanner />}
+    </View>
+  );
+}
