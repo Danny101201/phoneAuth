@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Text,
   View,
@@ -7,14 +7,15 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
-  Image
+  Image,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { FirebaseRecaptchaVerifierModal, FirebaseRecaptchaBanner } from 'expo-firebase-recaptcha';
 import { initializeApp, getApp } from 'firebase/app';
 import { getAuth, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { firebaseConfig } from './config';
 import * as ImagePicker from 'expo-image-picker';
-
+import { BarCodeScanner } from 'expo-barcode-scanner';
 const app = getApp();
 const auth = getAuth(app);
 
@@ -32,6 +33,9 @@ export default function App() {
   const [phoneNumber, setPhoneNumber] = React.useState();
   const [verificationId, setVerificationId] = React.useState();
   const [verificationCode, setVerificationCode] = React.useState();
+  // qrcode
+  const [hasPermission, setHasPermission] = useState(null);
+  const [scanned, setScanned] = useState(false);
 
 
   const [message, showMessage] = React.useState();
@@ -55,6 +59,28 @@ export default function App() {
     ImagePicker.launchCameraAsync({
       aspect: [16, 9],
     }, console.log)
+  }
+
+
+  useEffect(() => {
+    const getBarCodeScannerPermissions = async () => {
+      const { status } = await BarCodeScanner.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
+    };
+
+    getBarCodeScannerPermissions();
+  }, []);
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    setScanned(true);
+    alert(`Bar code with type ${type} and data ${data} has been scanned!`);
+  };
+
+  if (hasPermission === null) {
+    return <Text>Requesting for camera permission</Text>;
+  }
+  if (hasPermission === false) {
+    return <Text>No access to camera</Text>;
   }
   return (
     <View style={{ padding: 20, marginTop: 50 }}>
@@ -137,6 +163,11 @@ export default function App() {
         </TouchableOpacity>
       ) : undefined}
       {attemptInvisibleVerification && <FirebaseRecaptchaBanner />}
+
+      <BarCodeScanner
+        onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+      />
+      {scanned && <Button title={'Tap to Scan Again'} onPress={() => setScanned(false)} />}
     </View>
   );
 }
